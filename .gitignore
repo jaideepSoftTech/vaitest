@@ -32,3 +32,6 @@ coverage/
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+
+# Stray temp files (e.g. from filesystem diagnostics)
+*.tmp

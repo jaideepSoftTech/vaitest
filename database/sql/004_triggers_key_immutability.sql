@@ -1,0 +1,6 @@
+-- 004_triggers_key_immutability.sql
+-- TODO (BE-1/SE-2): trigger(s) that make org_id (and any other tenancy key)
+-- immutable after insert on tenant-scoped tables — an UPDATE that changes
+-- org_id is exactly the kind of bug RLS's WITH CHECK alone does not fully
+-- prevent (it would just re-check under the *new* org context). Reject the
+-- update instead of silently re-scoping a row to a different tenant.

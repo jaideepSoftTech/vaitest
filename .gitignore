@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+storybook-static/
+*.tsbuildinfo
+apps/web/next-env.d.ts
+
+# Turbo
+.turbo/
+
+# Prisma
+**/generated/prisma/
+
+# Env — .env.example is the only committed env file (08-TEAM-SYSTEMS.md §11.2)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test / coverage
+coverage/
+
+# OS / editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json

@@ -1,0 +1,11 @@
+-- 002_partitioning.sql
+-- TODO (SE-2, Week 1-2): partition `execution_events` (and any other
+-- high-volume append-only table the load test flags) by RANGE(created_at).
+-- ERD §12.1 notes execution_events has no unique constraint beyond its
+-- composite PK, so partitioning is cheap here; execution_steps is called out
+-- as a harder case requiring the partition key in every unique constraint.
+--
+-- Deliberately not fabricated in this scaffold — partition boundary policy
+-- (monthly vs weekly, retention, the maintenance job in W1's roadmap row)
+-- is a Week 1 SE-2 decision to make against real write-volume assumptions,
+-- not to guess at while scaffolding M0.

@@ -1,0 +1,80 @@
+# .github/workflows/pr.yml
+#
+# M0 scope only. The M0 exit criterion (05-ROADMAP-18-WEEKS.md) is just
+# "CI green on an empty PR" — this is the `verify` job from
+# 08-TEAM-SYSTEMS.md §9.2, unmodified in shape (checkout → pnpm/node setup →
+# turbo cache → install → env:check → lint/typecheck/test:unit/build).
+#
+# Deliberately NOT included yet (all explicitly Week 2+ in 05-ROADMAP-18-WEEKS.md,
+# owned by SE-1/SE-2):
+#   - `integration` (ephemeral postgres/redis/minio + RLS coverage gate) — Wk 2
+#   - `isolation` (cross-tenant isolation harness) — Wk 2-3, harness doesn't exist yet
+#   - `contract` (OpenAPI drift) — needs packages/types/openapi.json, not generated yet
+#   - `images` / `security` (container build + trivy/gitleaks scan) — needs
+#     infrastructure/docker/Dockerfile, which doesn't exist yet
+# Adding each as its dependency lands is tracked in the roadmap, not repeated here.
+#
+# Also dropped for M0: the `pnpm qa lint:tenancy` step (a bespoke CLI check
+# for literal bucket keys / unscoped redis keys / console.log — no `qa` CLI
+# exists yet). The one piece of tenancy lint that *does* exist this week —
+# the ESLint `no-bare-prisma-client` rule in packages/config — already runs
+# as part of `pnpm turbo run lint` below.
+
+name: PR
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+  NEXT_TELEMETRY_DISABLED: 1
+  DO_NOT_TRACK: 1
+
+jobs:
+  verify:
+    name: lint · typecheck · unit · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Restore turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.event.pull_request.base.sha }}
+            turbo-${{ runner.os }}-
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Environment contract
+        run: pnpm env:check # .env.example vs process.env references
+
+      - name: Lint, typecheck, unit tests, build
+        run: >
+          pnpm turbo run lint typecheck test:unit build
+          --cache-dir=.turbo
+          --filter=...[origin/${{ github.base_ref }}]
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: coverage, path: "**/coverage/", retention-days: 7 }

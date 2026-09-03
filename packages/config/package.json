@@ -1,0 +1,13 @@
+{
+  "name": "@qa/config",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./eslint/index.js",
+  "exports": {
+    "./eslint": "./eslint/index.js",
+    "./tsconfig.base.json": "./tsconfig.base.json"
+  },
+  "dependencies": {
+    "typescript-eslint": "catalog:"
+  }
+}

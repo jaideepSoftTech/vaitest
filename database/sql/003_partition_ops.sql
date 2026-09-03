@@ -1,0 +1,6 @@
+-- 003_partition_ops.sql
+-- TODO (SE-2): scheduled partition maintenance (create next period ahead of
+-- time, drop/archive expired ones per artifact-retention entitlement). Wired
+-- to the `scheduler` process's cron list in 08-TEAM-SYSTEMS.md's module
+-- inventory ("partition maintenance"). Depends on 002_partitioning.sql
+-- landing first.

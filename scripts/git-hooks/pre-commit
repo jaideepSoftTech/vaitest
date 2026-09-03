@@ -1,0 +1,25 @@
+#!/bin/sh
+# scripts/git-hooks/pre-commit
+#
+# Enable once per clone with: git config core.hooksPath scripts/git-hooks
+# (08-TEAM-SYSTEMS.md §11.2-11.3 — real .env files never get staged, and
+# secrets get caught on the laptop in seconds instead of in CI minutes later.)
+set -eu
+
+# Reject any staged .env* file except .env.example.
+bad_env_files=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(.*/)?\.env(\..*)?$' | grep -v '\.env\.example$' || true)
+if [ -n "$bad_env_files" ]; then
+  echo "pre-commit: refusing to commit real env file(s):" >&2
+  echo "$bad_env_files" >&2
+  echo "Only .env.example may be committed. See 08-TEAM-SYSTEMS.md §11.2." >&2
+  exit 1
+fi
+
+# Secret scan, staged files only. Skipped with a warning (not a hard fail) if
+# gitleaks isn't installed locally — CI's `security` job is the real gate
+# once it lands; this is the fast local pre-check.
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --config .gitleaks.toml
+else
+  echo "pre-commit: gitleaks not installed locally, skipping secret scan (install: https://github.com/gitleaks/gitleaks)" >&2
+fi

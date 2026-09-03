@@ -1,0 +1,15 @@
+# .gitleaks.toml
+#
+# Baseline config for `gitleaks protect --staged`, run by the pre-commit hook
+# (scripts/git-hooks/pre-commit) and again in CI once the `security` job
+# lands (08-TEAM-SYSTEMS.md §11.3 — Week 4+, needs infrastructure/docker/
+# Dockerfile first). Extends gitleaks' default detector set; no repo-specific
+# allowlist entries yet since there's no history to false-positive against.
+
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''\.env\.example$''',
+]

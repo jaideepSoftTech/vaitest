@@ -1,0 +1,7 @@
+-- 006_indexes_trgm_hnsw.sql
+-- TODO (BE-3/SE-2): HNSW index on `embeddings.vector` (pgvector) for
+-- org-scoped duplicate detection, and pg_trgm GIN indexes for fuzzy text
+-- search (test titles, issue titles). Deferred out of M0: the index-tuning
+-- parameters (m, ef_construction) are meant to be chosen against the Week 3
+-- seed data and the Week 12 recall measurement (R5 in the roadmap's risk
+-- table), not guessed at while the table is empty.

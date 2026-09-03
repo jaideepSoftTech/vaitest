@@ -1,0 +1,6 @@
+-- 005_triggers_folder_path.sql
+-- TODO (BE-1): maintain Folder's materialized path (or nesting depth guard)
+-- on insert/move so the frontend's whole-tree-client-side folder view
+-- (06-TEAM-FRONTEND.md, FolderTree component) doesn't need a recursive CTE
+-- on every request. Depends on the final Folder self-relation shape in
+-- database/schema.prisma.

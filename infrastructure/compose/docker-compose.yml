@@ -1,0 +1,155 @@
+# infrastructure/compose/docker-compose.yml
+#
+# M0 scope only (05-ROADMAP-18-WEEKS.md Week 1 / Systems row: "Docker Compose
+# (PG17+pgvector, Redis, MinIO, Ollama)"). This brings up the four infra
+# dependencies the app talks to — nothing that runs application code.
+#
+# Deliberately NOT included yet, all deferred to the week `infrastructure/
+# docker/Dockerfile` is written (08-TEAM-SYSTEMS.md §1.6 has the full source
+# for these; they were left out here rather than pointed at a Dockerfile that
+# doesn't exist):
+#   - `api` / `web` (profile: dev) — apps/api and apps/web build targets
+#   - `worker` / `worker-exploration` / `browser-agent*` (profile: worker)
+#   - `postgres-eu` / `minio-eu` (profile: regions) — second-region stack
+#   - `bull-board` / `prism-mock` (profile: tools)
+# Until then, run `apps/api` and `apps/web` directly with `pnpm dev` against
+# the services below (see .env.example for the localhost URLs each expects).
+
+name: qa-platform
+
+x-logging: &default-logging
+  driver: json-file
+  options: { max-size: "50m", max-file: "5" }
+
+networks:
+  internal: # postgres, redis, minio, ollama — and later api/worker
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  ollamadata:
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    command:
+      - postgres
+      - -c=max_connections=150
+      - -c=shared_buffers=1GB
+      - -c=effective_cache_size=3GB
+      - -c=work_mem=16MB
+      - -c=maintenance_work_mem=512MB
+      - -c=random_page_cost=1.1
+      - -c=max_wal_size=4GB
+      - -c=log_min_duration_statement=500
+      - -c=log_lock_waits=on
+      - -c=track_io_timing=on
+      - -c=row_security=on # explicit; a superuser session must not silently bypass
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-qa_platform_root}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qa_platform_root_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-qa_platform}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-qa_platform_root} -d ${POSTGRES_DB:-qa_platform}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 4G }
+    networks: [internal]
+    logging: *default-logging
+
+  redis:
+    image: redis:7.4-alpine
+    command:
+      - redis-server
+      - --appendonly=yes
+      - --maxmemory=768mb
+      - --maxmemory-policy=noeviction
+    volumes: [redisdata:/data]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1G }
+    networks: [internal]
+    logging: *default-logging
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-qa_minio_root}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-qa_minio_dev_password}
+      MINIO_REGION: ${QA_REGION:-us}
+    volumes: [miniodata:/data]
+    ports: ["9000:9000", "9001:9001"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 2G }
+    networks: [internal]
+    logging: *default-logging
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "/init/buckets.sh"]
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-qa_minio_root}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-qa_minio_dev_password}
+    volumes:
+      - ../scripts/minio:/init:ro
+    networks: [internal]
+    restart: "no"
+
+  ollama:
+    image: ollama/ollama:0.6.5
+    volumes: [ollamadata:/root/.ollama]
+    ports: ["11434:11434"]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list | grep -q nomic-embed-text || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "4.0", memory: 10G }
+    networks: [internal]
+    logging: *default-logging
+
+  # Pulls the embedding model once, then exits. Separate from `ollama` so the
+  # model pull is not inside the service healthcheck's start_period budget and
+  # a cold pull does not look like a crash-loop. Excluded from the 15-minute
+  # clean-machine budget (05-ROADMAP §1.5) — `pnpm ollama:warm` re-runs this
+  # in the background; nothing in the M0/vertical-slice path needs embeddings.
+  ollama-init:
+    image: ollama/ollama:0.6.5
+    depends_on:
+      ollama: { condition: service_started }
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        until ollama --version >/dev/null 2>&1; do sleep 1; done;
+        OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_EMBED_MODEL:-nomic-embed-text};
+        OLLAMA_HOST=http://ollama:11434 ollama show ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+    networks: [internal]
+    restart: "no"

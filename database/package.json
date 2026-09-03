@@ -1,0 +1,13 @@
+{
+  "name": "database",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "db:gen-rls": "tsx scripts/gen-rls.ts",
+    "db:migrate:build": "tsx scripts/build-migration.ts"
+  },
+  "devDependencies": {
+    "tsx": "4.19.2",
+    "typescript": "catalog:"
+  }
+}

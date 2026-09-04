@@ -1,0 +1,21 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:DeleteObject"],
+      "Resource": [
+        "arn:aws:s3:::qa-artifacts/org/*",
+        "arn:aws:s3:::qa-knowledge/org/*",
+        "arn:aws:s3:::qa-exports/org/*",
+        "arn:aws:s3:::qa-backups/org/*",
+        "arn:aws:s3:::qa-tmp/org/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject"],
+      "Resource": ["arn:aws:s3:::qa-exports/*"]
+    }
+  ]
+}

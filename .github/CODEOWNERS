@@ -1,0 +1,13 @@
+# CODEOWNERS — GitHub review routing.
+# NOTE: @systems, @backend, @frontend are placeholder team names.
+# Replace with real GitHub team handles (e.g., @org/systems) or username handles
+# before this file has any effect. GitHub silently no-ops on unresolvable handles
+# rather than erroring, so this file must be verified against `gh` before enabling.
+
+infrastructure/**        @systems
+database/**               @systems
+.github/**                @systems
+packages/isolation/**     @systems
+compliance/**              @systems
+packages/domain/**        @backend
+apps/web/**                @frontend

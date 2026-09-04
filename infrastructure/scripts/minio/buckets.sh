@@ -5,14 +5,16 @@
 # Source: 08-TEAM-SYSTEMS.md §6.1.
 #
 # M0 scope: bucket creation, public-access lockdown, at-rest encryption, and
-# the time-based ILM rules. NOT included yet: the `mc admin user svcacct add`
-# least-privilege service accounts (policy-worker.json / policy-api.json /
-# policy-lifecycle.json), because those policy documents and the
-# S3_WORKER_KEY / S3_API_KEY / S3_LIFECYCLE_KEY secrets they need aren't
-# defined until the worker/api containers that consume them exist. Until
-# then, apps/api and apps/worker use the root S3_ACCESS_KEY / S3_SECRET_KEY
-# from .env directly (fine for a single-developer machine, not for anything
-# further along than M0).
+# the time-based ILM rules.
+#
+# Week 2 delta from M0: Added service account creation for three least-privilege
+# roles (worker, api, lifecycle) via policy JSON files. Service accounts are only
+# created if their corresponding environment variables are set (S3_WORKER_KEY,
+# S3_API_KEY, S3_LIFECYCLE_KEY). This remains a no-op until those env vars are
+# added, since the containers that consume these credentials (worker, browser-agent)
+# don't exist until Week 4+. Until then, apps/api and apps/worker use the root
+# S3_ACCESS_KEY / S3_SECRET_KEY from .env directly (fine for a single-developer
+# machine, not for anything further along than M0).
 set -eu
 
 mc alias set local "$S3_ENDPOINT" "$S3_ACCESS_KEY" "$S3_SECRET_KEY"
@@ -35,3 +37,26 @@ mc ilm rule add --expire-days 7   --prefix "exports/"   local/qa-exports
 mc ilm rule add --expire-days 60  --prefix "pg/daily/"  local/qa-backups
 mc ilm rule add --expire-days 400 --prefix "pg/weekly/" local/qa-backups
 mc version enable local/qa-backups
+
+# Service account creation for least-privilege roles (Week 2+).
+# Only created if env vars are set; no-op if unset (remains compatible with M0).
+if [ -n "${S3_WORKER_KEY:-}" ] && [ -n "${S3_WORKER_SECRET:-}" ]; then
+  mc admin user svcacct add local "$S3_ACCESS_KEY" \
+    --access-key "$S3_WORKER_KEY" \
+    --secret-key "$S3_WORKER_SECRET" \
+    --policy /init/policy-worker.json
+fi
+
+if [ -n "${S3_API_KEY:-}" ] && [ -n "${S3_API_SECRET:-}" ]; then
+  mc admin user svcacct add local "$S3_ACCESS_KEY" \
+    --access-key "$S3_API_KEY" \
+    --secret-key "$S3_API_SECRET" \
+    --policy /init/policy-api.json
+fi
+
+if [ -n "${S3_LIFECYCLE_KEY:-}" ] && [ -n "${S3_LIFECYCLE_SECRET:-}" ]; then
+  mc admin user svcacct add local "$S3_ACCESS_KEY" \
+    --access-key "$S3_LIFECYCLE_KEY" \
+    --secret-key "$S3_LIFECYCLE_SECRET" \
+    --policy /init/policy-lifecycle.json
+fi

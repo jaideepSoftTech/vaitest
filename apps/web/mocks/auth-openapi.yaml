@@ -1,0 +1,635 @@
+openapi: 3.1.0
+info:
+  title: qa-platform Auth API
+  version: 1.0.0
+  description: |
+    Week 2 auth endpoints. This is a hand-written subset of the backend contract
+    (04-API-CONTRACTS.md §Auth) used by Prism mock for frontend-only iteration.
+    Expected to be replaced by the generated OpenAPI spec (Week 3) once the backend
+    publishes its full contract.
+
+servers:
+  - url: /api/v1
+
+paths:
+  /auth/signup:
+    post:
+      operationId: signup
+      summary: Sign up new user and organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - name
+                - orgName
+                - dataRegion
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 12
+                name:
+                  type: string
+                orgName:
+                  type: string
+                orgSlug:
+                  type: string
+                  pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+                dataRegion:
+                  type: string
+                  enum:
+                    - US
+                    - EU
+            examples:
+              default:
+                value:
+                  email: user@example.com
+                  password: SecurePassword123
+                  name: John Doe
+                  orgName: Acme Corp
+                  orgSlug: acme-corp
+                  dataRegion: US
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "202":
+          description: Email verification required (always returned regardless of prior account existence)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - emailVerificationRequired
+                properties:
+                  emailVerificationRequired:
+                    type: boolean
+                    enum:
+                      - true
+              examples:
+                success:
+                  value:
+                    emailVerificationRequired: true
+
+  /auth/discover:
+    get:
+      operationId: discover
+      summary: Discover organization by email domain
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        "200":
+          description: Organization claim status and auth mode
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required:
+                      - domainClaimed
+                      - mode
+                    properties:
+                      domainClaimed:
+                        type: boolean
+                        enum:
+                          - false
+                      mode:
+                        type: string
+                        enum:
+                          - PASSWORD
+                  - type: object
+                    required:
+                      - domainClaimed
+                      - orgSlug
+                      - orgName
+                      - mode
+                      - protocol
+                      - startUrl
+                    properties:
+                      domainClaimed:
+                        type: boolean
+                        enum:
+                          - true
+                      orgSlug:
+                        type: string
+                      orgName:
+                        type: string
+                      mode:
+                        type: string
+                        enum:
+                          - SSO_REQUIRED
+                          - SSO_OPTIONAL
+                      protocol:
+                        type: string
+                        enum:
+                          - SAML
+                          - OIDC
+                      startUrl:
+                        type: string
+              examples:
+                unclaimed:
+                  value:
+                    domainClaimed: false
+                    mode: PASSWORD
+                sso_required:
+                  value:
+                    domainClaimed: true
+                    orgSlug: acme-corp
+                    orgName: Acme Corp
+                    mode: SSO_REQUIRED
+                    protocol: SAML
+                    startUrl: https://acme.okta.com/app/123/sso/saml
+
+  /auth/login:
+    post:
+      operationId: login
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+            examples:
+              default:
+                value:
+                  email: user@example.com
+                  password: SecurePassword123
+      responses:
+        "200":
+          description: Login successful
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: refreshToken=...; HttpOnly; Secure; SameSite=Strict
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - accessToken
+                  - user
+                  - orgs
+                properties:
+                  accessToken:
+                    type: string
+                  user:
+                    $ref: "#/components/schemas/User"
+                  orgs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Org"
+              examples:
+                success:
+                  value:
+                    accessToken: eyJ...
+                    user:
+                      id: u_123
+                      email: user@example.com
+                      name: John Doe
+                      avatarUrl: null
+                      status: active
+                      lastLoginAt: "2026-01-15T10:30:00Z"
+                    orgs:
+                      - id: org_123
+                        name: Acme Corp
+                        slug: acme-corp
+                        role: OWNER
+                        status: active
+                        planKey: pro
+                        dataRegion: US
+                        permissions:
+                          - read:projects
+                          - write:projects
+                        entitlements:
+                          maxProjects: 50
+                          aiMinutesPerMonth: 10000
+                        budgetState: OK
+        "401":
+          description: Invalid credentials (generic message)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+              examples:
+                bad_creds:
+                  value:
+                    error: INVALID_CREDENTIALS
+                    message: Invalid email or password
+        "429":
+          description: Too many attempts (rate limited)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+              examples:
+                rate_limited:
+                  value:
+                    error: RATE_LIMITED
+                    message: Too many login attempts. Please try again later.
+
+  /auth/refresh:
+    post:
+      operationId: refresh
+      summary: Refresh access token (cookie-based)
+      responses:
+        "200":
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - accessToken
+                properties:
+                  accessToken:
+                    type: string
+              examples:
+                success:
+                  value:
+                    accessToken: eyJ...
+        "401":
+          description: Session expired or invalid (no refresh token)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Logout (clear refresh token)
+      responses:
+        "204":
+          description: Logged out successfully
+
+  /auth/me:
+    get:
+      operationId: me
+      summary: Get current user and active org
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+            example: "Bearer eyJ..."
+      responses:
+        "200":
+          description: Current user and orgs
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - user
+                  - activeOrgId
+                  - orgs
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+                  activeOrgId:
+                    type: string
+                  orgs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Org"
+        "401":
+          description: Token invalid or expired
+
+  /auth/verify-email:
+    post:
+      operationId: verifyEmail
+      summary: Verify email and auto-login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+            examples:
+              default:
+                value:
+                  token: eyJ...
+      responses:
+        "200":
+          description: Email verified, auto-login
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - accessToken
+                  - user
+                  - orgs
+                properties:
+                  accessToken:
+                    type: string
+                  user:
+                    $ref: "#/components/schemas/User"
+                  orgs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Org"
+        "400":
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+              examples:
+                invalid:
+                  value:
+                    error: TOKEN_INVALID
+                    message: Verification token is invalid or expired
+
+  /auth/verify-email/resend:
+    post:
+      operationId: resendVerification
+      summary: Resend verification email (generic response, no enumeration)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+            examples:
+              default:
+                value:
+                  email: user@example.com
+      responses:
+        "200":
+          description: If email exists, verification link sent (always success to prevent enumeration)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ok
+                properties:
+                  ok:
+                    type: boolean
+              examples:
+                success:
+                  value:
+                    ok: true
+
+  /invitations/accept:
+    post:
+      operationId: acceptInvite
+      summary: Accept org invitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+                  minLength: 12
+                name:
+                  type: string
+            examples:
+              existing_user:
+                value:
+                  token: eyJ...
+              new_user:
+                value:
+                  token: eyJ...
+                  password: SecurePassword123
+                  name: Jane Doe
+      responses:
+        "200":
+          description: Invitation accepted, auto-login
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - accessToken
+                  - user
+                  - orgs
+                properties:
+                  accessToken:
+                    type: string
+                  user:
+                    $ref: "#/components/schemas/User"
+                  orgs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Org"
+        "400":
+          description: Invalid or expired invitation token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+
+  /auth/orgs:
+    post:
+      operationId: createOrg
+      summary: Create new organization (authenticated)
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+            example: "Bearer eyJ..."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - orgName
+                - dataRegion
+              properties:
+                orgName:
+                  type: string
+                orgSlug:
+                  type: string
+                  pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+                dataRegion:
+                  type: string
+                  enum:
+                    - US
+                    - EU
+            examples:
+              default:
+                value:
+                  orgName: Acme Corp 2
+                  orgSlug: acme-corp-2
+                  dataRegion: EU
+      responses:
+        "200":
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "401":
+          description: Unauthorized
+        "400":
+          description: Invalid input
+
+components:
+  schemas:
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - avatarUrl
+        - status
+        - lastLoginAt
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+        lastLoginAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+
+    Org:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+        - role
+        - status
+        - planKey
+        - dataRegion
+        - permissions
+        - entitlements
+        - budgetState
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        role:
+          type: string
+          enum:
+            - OWNER
+            - ADMIN
+            - EDITOR
+            - VIEWER
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+        planKey:
+          type: string
+        dataRegion:
+          type: string
+          enum:
+            - US
+            - EU
+        permissions:
+          type: array
+          items:
+            type: string
+        entitlements:
+          type: object
+          additionalProperties: true
+        budgetState:
+          type: string
+          enum:
+            - OK
+            - WARNING
+            - EXCEEDED

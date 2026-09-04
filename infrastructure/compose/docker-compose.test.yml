@@ -1,0 +1,99 @@
+# infrastructure/compose/docker-compose.test.yml
+#
+# Ephemeral/fast test environment for CI (integration tests in GitHub Actions).
+# Mirrors the structure of docker-compose.yml (logging, networking, etc.) but
+# with optimizations for test speed: synchronous_commit=off, fsync=off,
+# tmpfs for PostgreSQL data, no persistence on Redis, anonymous volume for MinIO.
+#
+# This is referenced by .github/workflows/pr.yml in the `integration` job,
+# which spins up these services as GitHub Actions `services:` containers.
+
+name: qa-platform-test
+
+x-logging: &default-logging
+  driver: json-file
+  options: { max-size: "50m", max-file: "5" }
+
+networks:
+  internal-test:
+    driver: bridge
+
+volumes:
+  minio-test-tmp:
+
+services:
+  postgres-test:
+    image: pgvector/pgvector:pg17
+    command:
+      - postgres
+      - -c=max_connections=150
+      - -c=shared_buffers=1GB
+      - -c=effective_cache_size=3GB
+      - -c=work_mem=16MB
+      - -c=maintenance_work_mem=512MB
+      - -c=random_page_cost=1.1
+      - -c=max_wal_size=4GB
+      - -c=log_min_duration_statement=500
+      - -c=log_lock_waits=on
+      - -c=track_io_timing=on
+      - -c=row_security=on
+      - -c=fsync=off
+      - -c=full_page_writes=off
+      - -c=synchronous_commit=off
+    environment:
+      POSTGRES_USER: qa
+      POSTGRES_PASSWORD: qa
+      POSTGRES_DB: qa_test
+    volumes:
+      - type: tmpfs
+        target: /var/lib/postgresql/data
+    ports: ["5433:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qa -d qa_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 4G }
+    networks: [internal-test]
+    logging: *default-logging
+
+  redis-test:
+    image: redis:7.4-alpine
+    command:
+      - redis-server
+      - --save ""
+    ports: ["6380:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1G }
+    networks: [internal-test]
+    logging: *default-logging
+
+  minio-test:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: miniotest
+      MINIO_ROOT_PASSWORD: miniotest123
+      MINIO_REGION: us
+    volumes:
+      - minio-test-tmp:/data
+    ports: ["9000:9000", "9001:9001"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 2G }
+    networks: [internal-test]
+    logging: *default-logging

@@ -9,3 +9,7 @@ export type { TxFor } from "./facade";
 // Re-exporting generated model/enum types is safe and expected — it's the
 // value under `@prisma/client` that is banned, not its types.
 export type { Prisma } from "@prisma/client";
+
+// Membership.role's enum type. Consumers get the type only (no runtime
+// binding to the banned `@prisma/client` value export) — see comment above.
+export type { Role } from "@prisma/client";

@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p ${WEB_PORT:-3000}",
+    "dev": "concurrently -n web,mock -c blue,magenta \"next dev -p ${WEB_PORT:-3000}\" \"prism mock mocks/auth-openapi.yaml -p ${PRISM_MOCK_PORT:-4010} --dynamic\"",
     "build": "next build",
     "start": "next start -p ${WEB_PORT:-3000}",
     "lint": "eslint \"app/**/*.{ts,tsx}\" \"src/**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
+    "mock:validate": "redocly lint mocks/auth-openapi.yaml --config .redocly.yaml",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
@@ -19,7 +20,9 @@
     "zustand": "^5.0.2",
     "zod": "catalog:",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "react-hook-form": "^7.51.3",
+    "@hookform/resolvers": "^3.3.4"
   },
   "devDependencies": {
     "@qa/config": "workspace:*",
@@ -34,6 +37,9 @@
     "autoprefixer": "^10.4.20",
     "@storybook/nextjs": "^8.4.7",
     "@storybook/react": "^8.4.7",
-    "storybook": "^8.4.7"
+    "storybook": "^8.4.7",
+    "concurrently": "^8.2.2",
+    "@stoplight/prism-cli": "^5.1.0",
+    "@redocly/cli": "^1.25.15"
   }
 }

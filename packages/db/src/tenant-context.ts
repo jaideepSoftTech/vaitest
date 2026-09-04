@@ -72,7 +72,13 @@ export type PlatformOperation =
   | "agent_rollouts.read"
   | "agent_rollouts.write"
   | "eval.read"
-  | "eval.write";
+  | "eval.write"
+  | "users.read"
+  | "users.write"
+  | "refresh_tokens.read"
+  | "refresh_tokens.write"
+  | "domain_claims.read"
+  | "invitations.read";
 
 const PLATFORM_ALLOW_LIST = new Set<string>([
   "plan",
@@ -82,6 +88,18 @@ const PLATFORM_ALLOW_LIST = new Set<string>([
   "evalCase",
   "evalRun",
   "evalResult",
+  // Auth: user is a global identity (RLS scoped by membership, not org_id).
+  // RefreshToken belongs to a user, not an org. DomainClaim needs cross-tenant
+  // lookup by domain before knowing which org (purely for routing). Invitation
+  // is otherwise a tenant-scoped, RLS-covered table (see
+  // database/sql/012_rls_policies.sql), but accepting an invite means looking
+  // it up by tokenHash *before* the org is known — same shape as DomainClaim.
+  // Every other invitation operation (create, list, update acceptedAt) has
+  // orgId in hand by then and must go through withTenant, not this door.
+  "user",
+  "refreshToken",
+  "domainClaim",
+  "invitation",
 ]);
 
 export async function withPlatform<T>(

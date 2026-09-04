@@ -1,0 +1,8 @@
+# Lint config for the Week-2 stopgap mock spec (mocks/auth-openapi.yaml).
+# Uses the "minimal" ruleset (structural/schema validity only) rather than
+# "recommended", since this file exists to drive `prism mock` for local
+# frontend dev, not as the canonical API contract (that lands in Week 3 once
+# the real backend publishes its own OpenAPI spec — see mocks/auth-openapi.yaml
+# header comment).
+extends:
+  - minimal
